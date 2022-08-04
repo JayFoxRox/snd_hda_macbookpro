@@ -2,18 +2,25 @@
 
 # NOTA BENE - this script should be run as root
 
-kernel_version=$(uname -r | cut -d '-' -f1)  #ie 5.2.7
+UNAME_V=$(uname -v)
+
+#UNAME_R=$(uname -r)
+UNAME_R=$1 # From DKMS
+
+echo "Kernel version $1 (from '$(uname -r)'; '$UNAME_V')"
+
+kernel_version=$(echo -n $UNAME_R | cut -d '-' -f1)  #ie 5.2.7 (from DKMS)
 major_version=$(echo $kernel_version | cut -d '.' -f1)
 minor_version=$(echo $kernel_version | cut -d '.' -f2)
 major_minor=${major_version}${minor_version}
 
-revision=$(uname -r | cut -d '.' -f3)
+revision=$(echo -n $UNAME_R | cut -d '.' -f3)
 revpart1=$(echo $revision | cut -d '-' -f1)
 revpart2=$(echo $revision | cut -d '-' -f2)
 revpart3=$(echo $revision | cut -d '-' -f3)
 
 build_dir='build'
-update_dir="/lib/modules/$(uname -r)/updates"
+update_dir="/lib/modules/$UNAME_R/updates"
 patch_dir='patch_cirrus'
 hda_dir="$build_dir/hda-$kernel_version"
 
@@ -21,9 +28,15 @@ hda_dir="$build_dir/hda-$kernel_version"
 [[ ! -d $build_dir ]] && mkdir $build_dir
 [[ -d $hda_dir ]] && rm -rf $hda_dir
 
-if [ ! -d /usr/src/linux-headers-$(uname -r) ]; then
+if [ `$UNAME_V | grep -c Ubuntu` -eq 1 ]; then
+  header_dir=/usr/src/linux-headers-$UNAME_R
+else
+  header_dir=/usr/lib/modules/$UNAME_R
+fi
 
-	echo "linux kernel headers not found in /usr/src: /usr/src/linux-headers-$(uname -r)"
+if [ ! -d $header_dir ]; then
+
+	echo "linux kernel headers not found in /usr/src: /usr/src/linux-headers-$UNAME_R"
 	echo "assuming the linux kernel headers package is not installed"
 	echo "please install the appropriate linux kernel headers package:"
 	echo "sudo apt install linux-headers-$revpart3"
@@ -37,7 +50,7 @@ fi
 # and not the mainline kernel source
 # for the moment assume will be required for any further versions
 # what about 5.5, 5.6, 5.8 etc???
-if [ $major_version -eq 5 -a $minor_version -eq 4 -a $revpart2 -ge 48  -a `uname -v | grep -c Ubuntu` -eq 1 ]; then
+if [ $major_version -eq 5 -a $minor_version -eq 4 -a $revpart2 -ge 48  -a `$UNAME_V | grep -c Ubuntu` -eq 1 ]; then
 
 	# supposedly this should download to here
 	# well that fails - get the useless metadata package
@@ -99,11 +112,10 @@ if [ $major_version -eq 5 -a $minor_version -ge 6 ]; then
    sed -i 's/getnstimeofday/ktime_get_real_ts64/' $hda_dir/patch_cirrus_new84.h
 fi
 
-cd $hda_dir
+pushd $hda_dir
 
-make
+make KVER=$UNAME_R
 
-make install
+popd
 
-echo -e "\ncontents of $update_dir"
-ls -lA $update_dir
+cp $hda_dir/snd-hda-codec-cirrus.ko .
